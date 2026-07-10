@@ -19,6 +19,7 @@ import "./product-list.css";
 const CARDS_VISIBLE_INITIAL = 3;
 const CARDS_PER_LOAD = 3;
 
+/** DOM refs — must match ids/classes in product-list.html */
 const carouselTrack = document.getElementById("carousel-track")!;
 const carouselContainer = document.getElementById("carousel-container")!;
 const loadMoreRow = document.getElementById("load-more-row")!;
@@ -34,18 +35,23 @@ const titleEl = document.querySelector(".title") as HTMLElement;
 const subtitleEl = document.querySelector(".subtitle") as HTMLElement;
 const mainEl = document.querySelector(".main") as HTMLElement;
 
+/** Build-time labels from .env (VITE_*), injected by Vite at compile time */
 const APPLICATION_TITLE =
   (import.meta.env?.VITE_APPLICATION_TITLE as string) || "Product List";
 const APPLICATION_SUBTITLE =
   (import.meta.env?.VITE_SUB_TITLE as string) ||
   "Explore the latest products and promotions.";
 
+/** In-memory product rows from the latest successful tool result */
 let currentCarouselData: CarouselRow[] = [];
+/** Site origin for resolving relative image paths from structuredContent.baseURL */
 let currentBaseURL: string | undefined;
+/** How many cards are currently rendered (grows via Load more) */
 let visibleCount = CARDS_VISIBLE_INITIAL;
 
 type CarouselRow = Record<string, string | number>;
 
+/** Shape of structuredContent returned by the `show-products` tool handler */
 type ToolStructured = {
   data?: CarouselRow[];
   columns?: string[];
@@ -66,12 +72,14 @@ function setLoading(loading: boolean) {
 }
 
 function getStructured(result: CallToolResult): ToolStructured | null {
+  // Host sends structuredContent alongside content[] for MCP App UIs
   if (result.isError) return null;
   const raw = result.structuredContent as ToolStructured | undefined;
   return raw ?? null;
 }
 
 function escapeHtml(s: string): string {
+  // Safe text insertion when building card HTML from API data
   const div = document.createElement("div");
   div.textContent = s;
   return div.innerHTML;
@@ -86,6 +94,7 @@ const PLACEHOLDER_IMAGE =
   );
 
 function getImageUrl(row: CarouselRow, baseURL?: string): string {
+  // Accept common field names from query-index / sheet-style JSON
   const raw =
     row.image ??
     row.thumbnail ??
@@ -150,6 +159,7 @@ function renderCardPrice(row: CarouselRow): string {
 }
 
 function renderCard(row: CarouselRow, baseURL: string | undefined, index: number): string {
+  // Builds one product card; index drives accent color rotation
   const title = escapeHtml(String(row.title ?? "Untitled"));
   const description = escapeHtml(String(row.description ?? "").trim());
   const image = getImageUrl(row, baseURL);
@@ -187,6 +197,7 @@ function renderCard(row: CarouselRow, baseURL: string | undefined, index: number
           </div>
           <div class="card-footer${priceHtml ? "" : " card-footer--cta-only"}">
             ${priceHtml}
+            <!-- Display-only CTA; no click handler wired -->
             <span class="card-visit-btn">View Details</span>
           </div>
         </div>
@@ -225,6 +236,7 @@ function renderCarousel(structured: ToolStructured) {
   errorMessage.textContent = "";
 
   if (data.length === 0) {
+    // Distinguish empty catalog vs. filter with no matches via `total`
     carouselContainer.hidden = true;
     loadMoreRow.hidden = true;
     emptyMessage.hidden = false;
@@ -277,6 +289,7 @@ function applyToolResult(result: CallToolResult) {
   }
 }
 
+/** MCP App client identity — sent to the host during `app.connect()` ui/initialize handshake */
 const app = new App({ name: "Product List App", version: "1.0.0" });
 
 /**

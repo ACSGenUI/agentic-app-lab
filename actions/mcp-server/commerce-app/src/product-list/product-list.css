@@ -217,10 +217,18 @@
   transform: translateY(-4px);
 }
 
-.card-content {
+.card-link {
   display: flex;
   flex-direction: column;
+  text-decoration: none;
+  color: inherit;
   height: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
   width: 100%;
 }
 
@@ -386,6 +394,19 @@
   border: none;
   border-radius: var(--border-radius-btn);
   white-space: nowrap;
+}
+
+.card-link:hover .card-visit-btn {
+  filter: brightness(1.08);
+}
+
+.card-link:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.card-link:focus:not(:focus-visible) {
+  outline: none;
 }
 
 .loader {

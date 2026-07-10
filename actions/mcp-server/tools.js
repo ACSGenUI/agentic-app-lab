@@ -14,7 +14,12 @@ governing permissions and limitations under the License.
  * MCP Server tools and resources for the Product List MCP App.
  *
  * Tools:
- * - show-products: fetches card data and renders the products carousel MCP App
+ * - show-products: fetches card data and renders the product-list MCP App
+ * - show-product-detail: renders a single product detail view MCP App
+ *
+ * Resources:
+ * - ui://show-products/product-list.html
+ * - ui://show-product-detail/product-detail.html
  */
 
 const fs = require('fs/promises')
@@ -34,7 +39,10 @@ try {
     // Local dev without embed step — falls back to reading actions/mcp-server/static/
 }
 
+/** URI linked from show-products via _meta.ui.resourceUri */
 const RESOURCE_URI = 'ui://show-products/product-list.html'
+/** URI linked from show-product-detail via _meta.ui.resourceUri */
+const PRODUCT_DETAIL_RESOURCE_URI = 'ui://show-product-detail/product-detail.html'
 
 const argsSchema = z.object({
     keywords: z
@@ -44,6 +52,34 @@ const argsSchema = z.object({
             'Full-text keywords to filter results; matches against title and description'
         )
 })
+
+const productSchema = z
+    .object({
+        title: z.string().describe('Product title'),
+        subtitle: z.string().optional().describe('Short subtitle, e.g. "Gift Set"'),
+        description: z.string().optional().describe('Product description'),
+        image: z.string().optional().describe('Primary image URL or path'),
+        images: z
+            .array(z.string())
+            .optional()
+            .describe('Additional image URLs or paths for the gallery'),
+        path: z.string().optional().describe('Link path to the product page'),
+        price: z
+            .union([z.string(), z.number()])
+            .optional()
+            .describe('Price value, e.g. 300 or "QAR 300.00"'),
+        currency: z.string().optional().describe('Currency code/symbol, e.g. "QAR"'),
+        badge: z.string().optional().describe('Promotional badge, e.g. "Buy 2 Get 1 Free"'),
+        rating: z
+            .union([z.string(), z.number()])
+            .optional()
+            .describe('Average rating (0-5)'),
+        reviews: z
+            .union([z.string(), z.number()])
+            .optional()
+            .describe('Number of reviews')
+    })
+    .passthrough()
 
 function matchesKeywords (row, keywords) {
     const title = String(row.title ?? '').toLowerCase()
@@ -68,6 +104,39 @@ async function fetchSheetData (endpoint) {
         throw new Error("Response must have a 'data' array")
     }
     return json
+}
+
+/** Resolve a possibly-relative URL/path against the configured baseURL. */
+function resolveUrl (value, baseURL) {
+    if (value == null || value === '') return ''
+    const s = String(value).trim()
+    if (!s) return ''
+    if (s.startsWith('http://') || s.startsWith('https://')) return s
+    const pathPart = s.startsWith('/') ? s : `/${s}`
+    if (baseURL && baseURL.trim()) {
+        return `${baseURL.replace(/\/$/, '')}${pathPart}`
+    }
+    return pathPart
+}
+
+/** Normalize a product object: resolve image/link URLs and build a gallery list. */
+function normalizeProduct (product, baseURL) {
+    const primaryImage = resolveUrl(
+        product.image ?? product.thumbnail ?? product.imageUrl ?? product.img,
+        baseURL
+    )
+    const gallery = Array.isArray(product.images)
+        ? product.images.map((img) => resolveUrl(img, baseURL)).filter(Boolean)
+        : []
+    if (primaryImage && !gallery.includes(primaryImage)) {
+        gallery.unshift(primaryImage)
+    }
+    return {
+        ...product,
+        image: primaryImage || undefined,
+        images: gallery,
+        link: resolveUrl(product.path, baseURL) || undefined
+    }
 }
 
 function buildResourceDomains (baseURL, extraDomains) {
@@ -123,7 +192,9 @@ function resolveConfig (params = {}) {
         params.RESOURCE_DOMAINS ?? actionConfig.RESOURCE_DOMAINS
     const staticDir = params.__staticDir || path.join(__dirname, 'static')
     const htmlPath = params.__productListHtmlPath || path.join(staticDir, 'product-list.html')
-    return { baseURL, dataEndpoint, resourceDomains, htmlPath }
+    const detailHtmlPath =
+        params.__productDetailHtmlPath || path.join(staticDir, 'product-detail.html')
+    return { baseURL, dataEndpoint, resourceDomains, htmlPath, detailHtmlPath }
 }
 
 async function loadUiHtml (filePath, embeddedKey) {
@@ -220,6 +291,56 @@ function registerTools (server, params = {}) {
             }
         }
     )
+
+    registerAppTool(
+        server,
+        'show-product-detail',
+        {
+            title: 'Show Product Detail',
+            description:
+                'Renders a detailed product view (image gallery, title, subtitle, price, promotional badge, rating, quantity selector, and add-to-bag) for a single card. Pass the card/product object (title, description, image, path, price, badge, rating, reviews). Typically invoked when a user clicks a card in the product list.',
+            inputSchema: {
+                product: productSchema.describe(
+                    'The product/card object to render in the detail view'
+                )
+            },
+            outputSchema: {
+                product: z.record(z.any()),
+                baseURL: z.string().optional()
+            },
+            _meta: { ui: { resourceUri: PRODUCT_DETAIL_RESOURCE_URI } }
+        },
+        async (args) => {
+            const parsed = z
+                .object({ product: productSchema })
+                .safeParse(args ?? {})
+            if (!parsed.success) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: `Invalid arguments: ${parsed.error.message}`
+                        }
+                    ],
+                    isError: true
+                }
+            }
+
+            const product = normalizeProduct(parsed.data.product, baseURL)
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: `Showing product detail for "${product.title}".`
+                    }
+                ],
+                structuredContent: {
+                    product,
+                    baseURL: baseURL || undefined
+                }
+            }
+        }
+    )
 }
 
 /**
@@ -228,7 +349,7 @@ function registerTools (server, params = {}) {
  * @param {object} params
  */
 function registerResources (server, params = {}) {
-    const { baseURL, resourceDomains, htmlPath } = resolveConfig(params)
+    const { baseURL, resourceDomains, htmlPath, detailHtmlPath } = resolveConfig(params)
     const domains = buildResourceDomains(baseURL, resourceDomains)
     const cspMeta = {
         ui: {
@@ -238,29 +359,34 @@ function registerResources (server, params = {}) {
         }
     }
 
-    registerAppResource(
-        server,
-        RESOURCE_URI,
-        RESOURCE_URI,
-        { mimeType: RESOURCE_MIME_TYPE },
-        async () => {
-            const html = await loadUiHtml(htmlPath, 'productListHtml')
-            return {
-                contents: [
-                    {
-                        uri: RESOURCE_URI,
-                        mimeType: RESOURCE_MIME_TYPE,
-                        text: html,
-                        _meta: cspMeta
-                    }
-                ]
+    const makeResource = (uri, filePath, embeddedKey) =>
+        registerAppResource(
+            server,
+            uri,
+            uri,
+            { mimeType: RESOURCE_MIME_TYPE },
+            async () => {
+                const html = await loadUiHtml(filePath, embeddedKey)
+                return {
+                    contents: [
+                        {
+                            uri,
+                            mimeType: RESOURCE_MIME_TYPE,
+                            text: html,
+                            _meta: cspMeta
+                        }
+                    ]
+                }
             }
-        }
-    )
+        )
+
+    makeResource(RESOURCE_URI, htmlPath, 'productListHtml')
+    makeResource(PRODUCT_DETAIL_RESOURCE_URI, detailHtmlPath, 'productDetailHtml')
 }
 
 module.exports = {
     registerTools,
     registerResources,
-    RESOURCE_URI
+    RESOURCE_URI,
+    PRODUCT_DETAIL_RESOURCE_URI
 }

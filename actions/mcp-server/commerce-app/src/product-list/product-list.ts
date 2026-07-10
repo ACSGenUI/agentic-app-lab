@@ -4,6 +4,7 @@
  * Data flow:
  * 1. Host invokes `show-products` → server returns structuredContent → `ontoolresult` renders cards.
  * 2. User filters via keywords → UI calls `app.callServerTool` to re-invoke `show-products`.
+ * 3. User clicks a card → UI asks the host to call `show-product-detail` via `app.sendMessage`.
  */
 import {
   App,
@@ -180,7 +181,7 @@ function renderCard(row: CarouselRow, baseURL: string | undefined, index: number
 
   return `
     <article class="card" style="--card-accent: ${accent}">
-      <div class="card-content">
+      <button type="button" class="card-link" data-card-index="${index}" aria-label="View details for ${title}">
         <div class="card-hero">
           <div class="card-hero-bg" aria-hidden="true"></div>
           <div class="card-image-wrap">${imgHtml}</div>
@@ -197,11 +198,10 @@ function renderCard(row: CarouselRow, baseURL: string | undefined, index: number
           </div>
           <div class="card-footer${priceHtml ? "" : " card-footer--cta-only"}">
             ${priceHtml}
-            <!-- Display-only CTA; no click handler wired -->
             <span class="card-visit-btn">View Details</span>
           </div>
         </div>
-      </div>
+      </button>
     </article>
   `;
 }
@@ -356,6 +356,50 @@ filterBtn.addEventListener("click", async () => {
 keywordsInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") filterBtn.click();
 });
+
+/**
+ * Card click → ask the host to invoke `show-product-detail` with the clicked product.
+ * `sendMessage` does not call the tool directly — it prompts the agent to do so.
+ */
+async function openCardDetail(row: CarouselRow) {
+  const product = { ...row };
+  if (currentBaseURL) {
+    (product as Record<string, unknown>).baseURL = currentBaseURL;
+  }
+  const title = String(row.title ?? "this item");
+  try {
+    await app.sendMessage({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text:
+            `Show the product detail for "${title}" by calling the ` +
+            `show-product-detail tool with this product object: ` +
+            JSON.stringify(product),
+        },
+      ],
+    });
+  } catch (e) {
+    console.error(e);
+    errorMessage.textContent =
+      e instanceof Error ? e.message : "Could not open product detail.";
+    errorMessage.hidden = false;
+  }
+}
+
+/** Event delegation on the card grid — one listener for all visible cards */
+function handleCardClickEvent(event: Event) {
+  const target = event.target as HTMLElement | null;
+  const cardBtn = target?.closest<HTMLElement>(".card-link[data-card-index]");
+  if (!cardBtn) return;
+  const index = Number(cardBtn.dataset.cardIndex);
+  if (Number.isNaN(index)) return;
+  const row = currentCarouselData[index];
+  if (row) void openCardDetail(row);
+}
+
+carouselContainer.addEventListener("click", handleCardClickEvent);
 
 /** Paginate additional cards client-side without another server round-trip. */
 loadMoreBtn.addEventListener("click", () => {

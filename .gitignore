@@ -6,6 +6,14 @@ node_modules
 !.env.example
 .aio
 
+# Build output
+dist
+actions/mcp-server/static
+actions/mcp-server/embedded-ui.js
+actions/mcp-server/action-config.js
+*.tsbuildinfo
+.vite
+
 # Test output
 junit.xml
 

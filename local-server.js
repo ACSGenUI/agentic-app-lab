@@ -4,12 +4,10 @@
  *
  * Usage: node local-server.js [port]
  *
- * Project root: MCP clients using `transport: "StreamableHTTP"` + `url` typically do **not**
- * inject `env.UI_AUDIT_PROJECT_ROOT` into this Node process (that `env` applies to stdio-spawned servers).
- * Set the variable when you start the server, e.g.:
- *   UI_AUDIT_PROJECT_ROOT=/path/to/repo node local-server.js
- * Or send header `X-UI-Audit-Project-Root` on each request (see actions/mcp-server/lib/config.js).
+ * Loads variables from .env in the project root (baseURL, dataEndpoint, etc.).
  */
+
+require('dotenv').config()
 
 const http = require('http')
 const { main } = require('./actions/mcp-server/index.js')
@@ -22,19 +20,22 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
         const rawBody = Buffer.concat(chunks)
 
-        // Build OpenWhisk-style params
         const params = {
             __ow_method: req.method.toLowerCase(),
             __ow_headers: req.headers,
             __ow_path: req.url,
-            LOG_LEVEL: process.env.LOG_LEVEL || 'debug'
+            LOG_LEVEL: process.env.LOG_LEVEL || 'debug',
+            baseURL: process.env.baseURL || process.env.BASE_URL,
+            dataEndpoint: process.env.dataEndpoint || process.env.DATA_ENDPOINT,
+            RESOURCE_DOMAINS: process.env.RESOURCE_DOMAINS,
+            SERVICE_API_KEY: process.env.SERVICE_API_KEY,
+            AUTH_VALIDATE_IMS: process.env.AUTH_VALIDATE_IMS
         }
 
         if (rawBody.length > 0) {
             params.__ow_body = rawBody.toString('base64')
         }
 
-        // Copy query params as top-level params
         const url = new URL(req.url, `http://localhost:${PORT}`)
         url.searchParams.forEach((value, key) => { params[key] = value })
 
@@ -60,7 +61,17 @@ const server = http.createServer(async (req, res) => {
 })
 
 server.listen(PORT, () => {
+    const dataEndpoint = process.env.dataEndpoint || process.env.DATA_ENDPOINT
+    const baseURL = process.env.baseURL || process.env.BASE_URL
     console.log(`MCP local server running at http://localhost:${PORT}`)
     console.log(`Health check: curl http://localhost:${PORT}`)
     console.log(`MCP endpoint: http://localhost:${PORT}`)
+    if (!dataEndpoint) {
+        console.warn('Warning: dataEndpoint is not set. Add it to .env or the tool will fail.')
+    } else {
+        console.log(`dataEndpoint: ${dataEndpoint}`)
+    }
+    if (baseURL) {
+        console.log(`baseURL: ${baseURL}`)
+    }
 })

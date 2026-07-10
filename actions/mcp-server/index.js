@@ -23,7 +23,8 @@ require('./node18-web-globals.js')
 const { Core } = require('@adobe/aio-sdk')
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js')
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js')
-const { registerTools, registerResources, registerPrompts } = require('./tools.js')
+const path = require('path')
+const { registerTools, registerResources } = require('./tools.js')
 const { validateRequestAuth } = require('./validator.js')
 
 // SDK 1.24+ uses Web Standard transport. Optional module (see webpack externals) so build succeeds on 1.17.4.
@@ -47,26 +48,28 @@ let logger = null
  * Create MCP server instance with all capabilities
  * Following the exact pattern from SDK examples
  */
-function createMcpServer () {
+function createMcpServer (params = {}) {
     const server = new McpServer({
-    name: 'sselvara-agentic-app',
+        name: 'sselvara-agentic-app',
         version: '1.0.0'
     }, {
         capabilities: {
             logging: {},
             tools: {},
-            resources: {},
-            prompts: {}
+            resources: {}
         }
     })
 
-    // Register all capabilities
-    registerTools(server)
-    registerResources(server)
-    registerPrompts(server)
+    const appParams = {
+        ...params,
+        __staticDir: path.join(__dirname, 'static')
+    }
+
+    registerTools(server, appParams)
+    registerResources(server, appParams)
 
     if (logger) {
-        logger.info('MCP Server created with tools, resources, prompts, and logging capabilities')
+        logger.info('MCP Server created with show-products tool and UI resource')
     }
 
     return server
@@ -311,7 +314,7 @@ function handleHealthCheck () {
             status: 'healthy',
             server: 'sselvara-agentic-app',
             version: '1.0.0',
-            description: 'Adobe I/O Runtime MCP Server using official TypeScript SDK MCP v1.24.x',
+            description: 'Adobe I/O Runtime Product List MCP App using official TypeScript SDK',
             timestamp: new Date().toISOString(),
             transport: 'StreamableHTTP',
             sdk: '@modelcontextprotocol/sdk'
@@ -343,7 +346,7 @@ function handleOptionsRequest () {
 * falls back to StreamableHTTPServerTransport + mock req/res on SDK 1.17.x.
 */
 async function handleMcpRequest (params) {
-    const server = createMcpServer()
+    const server = createMcpServer(params)
     const body = parseRequestBody(params)
 
     try {

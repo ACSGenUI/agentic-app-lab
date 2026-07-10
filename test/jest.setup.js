@@ -59,6 +59,32 @@ jest.mock('@adobe/aio-sdk', () => ({
     }
 }))
 
+// ext-apps is ESM-only; mock registration helpers for Jest (CJS)
+jest.mock('@modelcontextprotocol/ext-apps/server', () => ({
+    RESOURCE_MIME_TYPE: 'text/html;profile=mcp-app',
+    registerAppTool (server, name, config, handler) {
+        server.registerTool(
+            name,
+            {
+                title: config.title,
+                description: config.description,
+                inputSchema: config.inputSchema,
+                outputSchema: config.outputSchema,
+                _meta: config._meta
+            },
+            handler
+        )
+    },
+    registerAppResource (server, name, uri, config, readCallback) {
+        server.registerResource(
+            name,
+            uri,
+            { mimeType: config.mimeType },
+            readCallback
+        )
+    }
+}))
+
 // Add any additional global setup here
 beforeAll(() => {
     // Global setup before all tests

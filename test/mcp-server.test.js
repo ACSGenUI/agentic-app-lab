@@ -11,25 +11,62 @@ governing permissions and limitations under the License.
 */
 
 /**
- * Test suite for MCP Server Template
- *
- * This file contains basic tests to verify your MCP server functionality.
- * Add more tests as you customize your server with new tools and features.
+ * Test suite for Product List MCP Server on Adobe I/O Runtime
  */
+
+jest.mock('../actions/mcp-server/action-config.js', () => ({}))
 
 const { main } = require('../actions/mcp-server/index.js')
 
-describe('MCP Server Template Tests', () => {
-    // Test server health check
+const TEST_DATA_ENDPOINT = 'https://example.com/query-index.json'
+const TEST_BASE_URL = 'https://example.com'
+
+const mockSheet = {
+    columns: ['title', 'description', 'image', 'path'],
+    data: [
+        {
+            title: 'Summer Sale',
+            description: 'Great deals on seasonal items',
+            image: 'https://example.com/sale.jpg',
+            path: '/sale'
+        },
+        {
+            title: 'Winter Collection',
+            description: 'Cozy products for cold weather',
+            image: 'https://example.com/winter.jpg',
+            path: '/winter'
+        }
+    ]
+}
+
+function baseParams (overrides = {}) {
+    return {
+        LOG_LEVEL: 'info',
+        baseURL: TEST_BASE_URL,
+        dataEndpoint: TEST_DATA_ENDPOINT,
+        ...overrides
+    }
+}
+
+describe('Product List MCP Server Tests', () => {
+    beforeEach(() => {
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            json: async () => mockSheet
+        })
+    })
+
+    afterEach(() => {
+        jest.restoreAllMocks()
+    })
+
     describe('Health Check', () => {
         test('should respond to GET request with health status', async () => {
-            const params = {
+            const result = await main({
                 __ow_method: 'get',
                 __ow_path: '/',
-                LOG_LEVEL: 'info'
-            }
-
-            const result = await main(params)
+                ...baseParams()
+            })
 
             expect(result.statusCode).toBe(200)
             expect(result.headers['Content-Type']).toBe('application/json')
@@ -41,15 +78,12 @@ describe('MCP Server Template Tests', () => {
         })
     })
 
-    // Test CORS handling
     describe('CORS Support', () => {
         test('should handle OPTIONS request for CORS preflight', async () => {
-            const params = {
+            const result = await main({
                 __ow_method: 'options',
-                LOG_LEVEL: 'info'
-            }
-
-            const result = await main(params)
+                ...baseParams()
+            })
 
             expect(result.statusCode).toBe(200)
             expect(result.headers['Access-Control-Allow-Origin']).toBe('*')
@@ -57,7 +91,6 @@ describe('MCP Server Template Tests', () => {
         })
     })
 
-    // Test MCP protocol implementation
     describe('MCP Protocol', () => {
         test('should handle initialize request', async () => {
             const initRequest = {
@@ -74,13 +107,11 @@ describe('MCP Server Template Tests', () => {
                 }
             }
 
-            const params = {
+            const result = await main({
                 __ow_method: 'post',
                 __ow_body: JSON.stringify(initRequest),
-                LOG_LEVEL: 'info'
-            }
-
-            const result = await main(params)
+                ...baseParams()
+            })
 
             expect(result.statusCode).toBe(200)
 
@@ -91,7 +122,7 @@ describe('MCP Server Template Tests', () => {
             expect(body.result.serverInfo.name).toBe('sselvara-agentic-app')
         })
 
-        test('should handle tools/list request', async () => {
+        test('should list only the show-products tool', async () => {
             const toolsListRequest = {
                 jsonrpc: '2.0',
                 id: 2,
@@ -99,211 +130,142 @@ describe('MCP Server Template Tests', () => {
                 params: {}
             }
 
-            const params = {
+            const result = await main({
                 __ow_method: 'post',
                 __ow_body: JSON.stringify(toolsListRequest),
-                LOG_LEVEL: 'info'
-            }
-
-            const result = await main(params)
+                ...baseParams()
+            })
 
             expect(result.statusCode).toBe(200)
 
             const body = JSON.parse(result.body)
-            expect(body.jsonrpc).toBe('2.0')
-            expect(body.id).toBe(2)
-            expect(Array.isArray(body.result.tools)).toBe(true)
-            expect(body.result.tools.length).toBeGreaterThan(0)
+            const toolNames = body.result.tools.map((tool) => tool.name)
+            expect(toolNames).toEqual(['show-products'])
+            expect(toolNames).not.toContain('echo')
+            expect(toolNames).not.toContain('calculator')
+            expect(toolNames).not.toContain('weather')
 
-            // Check that echo tool is present
-            const echoTool = body.result.tools.find(tool => tool.name === 'echo')
-            expect(echoTool).toBeDefined()
-            expect(echoTool.description).toContain('echo')
+            const productsTool = body.result.tools.find(
+                (tool) => tool.name === 'show-products'
+            )
+            expect(productsTool).toBeDefined()
+            expect(productsTool.description).toContain('cards')
         })
 
-        test('should handle echo tool call', async () => {
+        test('should call show-products tool and return structured content', async () => {
             const toolCallRequest = {
                 jsonrpc: '2.0',
                 id: 3,
                 method: 'tools/call',
                 params: {
-                    name: 'echo',
-                    arguments: {
-                        message: 'Hello, test!'
-                    }
+                    name: 'show-products',
+                    arguments: {}
                 }
             }
 
-            const params = {
+            const result = await main({
                 __ow_method: 'post',
                 __ow_body: JSON.stringify(toolCallRequest),
-                LOG_LEVEL: 'info'
-            }
-
-            const result = await main(params)
+                ...baseParams()
+            })
 
             expect(result.statusCode).toBe(200)
 
             const body = JSON.parse(result.body)
             expect(body.jsonrpc).toBe('2.0')
             expect(body.id).toBe(3)
-            expect(body.result.content).toBeDefined()
-            expect(body.result.content[0].text).toContain('Hello, test!')
+            expect(body.result.content[0].text).toContain('Showing 2 cards')
+            expect(body.result.structuredContent.total).toBe(2)
+            expect(body.result.structuredContent.baseURL).toBe(TEST_BASE_URL)
+            expect(global.fetch).toHaveBeenCalledWith(
+                TEST_DATA_ENDPOINT,
+                expect.objectContaining({ headers: { Accept: 'application/json' } })
+            )
         })
 
-        test('should handle calculator tool call', async () => {
+        test('should filter cards by keywords', async () => {
             const toolCallRequest = {
                 jsonrpc: '2.0',
                 id: 4,
                 method: 'tools/call',
                 params: {
-                    name: 'calculator',
-                    arguments: {
-                        expression: '2 + 3 * 4'
-                    }
+                    name: 'show-products',
+                    arguments: { keywords: 'winter' }
                 }
             }
 
-            const params = {
+            const result = await main({
                 __ow_method: 'post',
                 __ow_body: JSON.stringify(toolCallRequest),
-                LOG_LEVEL: 'info'
-            }
-
-            const result = await main(params)
+                ...baseParams()
+            })
 
             expect(result.statusCode).toBe(200)
 
             const body = JSON.parse(result.body)
-            expect(body.jsonrpc).toBe('2.0')
-            expect(body.id).toBe(4)
-            expect(body.result.content[0].text).toContain('14')
+            expect(body.result.content[0].text).toContain('Filtered to 1 cards')
+            expect(body.result.structuredContent.total).toBe(1)
+            expect(body.result.structuredContent.data[0].title).toBe('Winter Collection')
         })
 
-        test('should include echo, calculator, and weather tools', async () => {
-            const toolsListRequest = {
-                jsonrpc: '2.0',
-                id: 10,
-                method: 'tools/list',
-                params: {}
-            }
-
-            const params = {
-                __ow_method: 'post',
-                __ow_body: JSON.stringify(toolsListRequest),
-                LOG_LEVEL: 'info'
-            }
-
-            const result = await main(params)
-
-            expect(result.statusCode).toBe(200)
-
-            const body = JSON.parse(result.body)
-            const toolNames = body.result.tools.map(tool => tool.name)
-
-            expect(toolNames).toEqual(expect.arrayContaining(['echo', 'calculator', 'weather']))
-            expect(toolNames).toHaveLength(3)
-            expect(toolNames).not.toContain('example_tool')
-            expect(toolNames).not.toContain('file_search')
-        })
-
-        test('should handle weather tool call', async () => {
+        test('should return error when dataEndpoint is missing', async () => {
             const toolCallRequest = {
                 jsonrpc: '2.0',
-                id: 11,
+                id: 5,
                 method: 'tools/call',
                 params: {
-                    name: 'weather',
-                    arguments: {
-                        city: 'San Francisco'
-                    }
+                    name: 'show-products',
+                    arguments: {}
                 }
             }
 
-            const params = {
+            const result = await main({
                 __ow_method: 'post',
                 __ow_body: JSON.stringify(toolCallRequest),
                 LOG_LEVEL: 'info'
-            }
-
-            const result = await main(params)
+            })
 
             expect(result.statusCode).toBe(200)
 
             const body = JSON.parse(result.body)
-            expect(body.jsonrpc).toBe('2.0')
-            expect(body.id).toBe(11)
-            expect(body.result.content[0].text).toContain('Weather for San Francisco')
-            expect(body.result.content[0].text).toContain('Temperature:')
-            expect(body.result.content[0].text).toContain('°C')
-            expect(body.result.content[0].text).toContain('Humidity:')
-            expect(body.result.content[0].text).toContain('Wind:')
-            expect(body.result.content[0].text).not.toContain('Forecast')
-            expect(body.result.metadata).toBeDefined()
-            expect(body.result.metadata.city).toBe('San Francisco')
+            expect(body.result.isError).toBe(true)
+            expect(body.result.content[0].text).toContain('Missing dataEndpoint')
         })
 
-        test('should handle resources/list request', async () => {
+        test('should list products UI resource', async () => {
             const resourcesListRequest = {
                 jsonrpc: '2.0',
-                id: 5,
+                id: 6,
                 method: 'resources/list',
                 params: {}
             }
 
-            const params = {
+            const result = await main({
                 __ow_method: 'post',
                 __ow_body: JSON.stringify(resourcesListRequest),
-                LOG_LEVEL: 'info'
-            }
-
-            const result = await main(params)
+                ...baseParams()
+            })
 
             expect(result.statusCode).toBe(200)
 
             const body = JSON.parse(result.body)
-            expect(body.jsonrpc).toBe('2.0')
-            expect(body.id).toBe(5)
             expect(Array.isArray(body.result.resources)).toBe(true)
-        })
-
-        test('should handle prompts/list request', async () => {
-            const promptsListRequest = {
-                jsonrpc: '2.0',
-                id: 6,
-                method: 'prompts/list',
-                params: {}
-            }
-
-            const params = {
-                __ow_method: 'post',
-                __ow_body: JSON.stringify(promptsListRequest),
-                LOG_LEVEL: 'info'
-            }
-
-            const result = await main(params)
-
-            expect(result.statusCode).toBe(200)
-
-            const body = JSON.parse(result.body)
-            expect(body.jsonrpc).toBe('2.0')
-            expect(body.id).toBe(6)
-            expect(Array.isArray(body.result.prompts)).toBe(true)
+            const resource = body.result.resources.find(
+                (r) => r.uri === 'ui://show-products/product-list.html'
+            )
+            expect(resource).toBeDefined()
+            expect(body.result.resources).toHaveLength(1)
         })
     })
 
-    // Test error handling
     describe('Error Handling', () => {
         test('should handle invalid JSON-RPC request', async () => {
-            const params = {
+            const result = await main({
                 __ow_method: 'post',
                 __ow_body: 'invalid json',
-                LOG_LEVEL: 'info'
-            }
+                ...baseParams()
+            })
 
-            const result = await main(params)
-
-            // The server returns 500 for JSON parsing errors, which is correct behavior
             expect(result.statusCode).toBe(500)
 
             const body = JSON.parse(result.body)
@@ -311,10 +273,10 @@ describe('MCP Server Template Tests', () => {
             expect(body.error).toBeDefined()
         })
 
-        test('should handle unknown tool call', async () => {
+        test('should return error for unknown tool call', async () => {
             const toolCallRequest = {
                 jsonrpc: '2.0',
-                id: 7,
+                id: 8,
                 method: 'tools/call',
                 params: {
                     name: 'nonexistent_tool',
@@ -322,28 +284,24 @@ describe('MCP Server Template Tests', () => {
                 }
             }
 
-            const params = {
+            const result = await main({
                 __ow_method: 'post',
                 __ow_body: JSON.stringify(toolCallRequest),
-                LOG_LEVEL: 'info'
-            }
-
-            const result = await main(params)
+                ...baseParams()
+            })
 
             expect(result.statusCode).toBe(200)
 
             const body = JSON.parse(result.body)
-            expect(body.jsonrpc).toBe('2.0')
-            expect(body.error.code).toBe(-32602) // Invalid params - this is what the MCP SDK returns for unknown tools
+            expect(body.result.isError).toBe(true)
+            expect(body.result.content[0].text).toContain('not found')
         })
 
         test('should handle unsupported HTTP method', async () => {
-            const params = {
+            const result = await main({
                 __ow_method: 'put',
-                LOG_LEVEL: 'info'
-            }
-
-            const result = await main(params)
+                ...baseParams()
+            })
 
             expect(result.statusCode).toBe(405)
         })

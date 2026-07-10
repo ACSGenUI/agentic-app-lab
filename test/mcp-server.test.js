@@ -122,7 +122,7 @@ describe('Product List MCP Server Tests', () => {
             expect(body.result.serverInfo.name).toBe('sselvara-agentic-app')
         })
 
-        test('should list only the show-products tool', async () => {
+        test('should list show-products and show-product-detail tools', async () => {
             const toolsListRequest = {
                 jsonrpc: '2.0',
                 id: 2,
@@ -140,7 +140,10 @@ describe('Product List MCP Server Tests', () => {
 
             const body = JSON.parse(result.body)
             const toolNames = body.result.tools.map((tool) => tool.name)
-            expect(toolNames).toEqual(['show-products'])
+            expect(toolNames).toEqual(
+                expect.arrayContaining(['show-products', 'show-product-detail'])
+            )
+            expect(toolNames).toHaveLength(2)
             expect(toolNames).not.toContain('echo')
             expect(toolNames).not.toContain('calculator')
             expect(toolNames).not.toContain('weather')
@@ -150,6 +153,52 @@ describe('Product List MCP Server Tests', () => {
             )
             expect(productsTool).toBeDefined()
             expect(productsTool.description).toContain('cards')
+
+            const detailTool = body.result.tools.find(
+                (tool) => tool.name === 'show-product-detail'
+            )
+            expect(detailTool).toBeDefined()
+            expect(detailTool.description).toContain('detailed product view')
+        })
+
+        test('should call show-product-detail tool and return normalized product', async () => {
+            const toolCallRequest = {
+                jsonrpc: '2.0',
+                id: 20,
+                method: 'tools/call',
+                params: {
+                    name: 'show-product-detail',
+                    arguments: {
+                        product: {
+                            title: 'Japanese Cherry Blossom',
+                            subtitle: 'Gift Set',
+                            image: '/images/jcb.jpg',
+                            path: '/products/jcb',
+                            price: 300,
+                            currency: 'QAR',
+                            badge: 'Buy 2 Get 1 Free',
+                            rating: 4.8,
+                            reviews: 6
+                        }
+                    }
+                }
+            }
+
+            const result = await main({
+                __ow_method: 'post',
+                __ow_body: JSON.stringify(toolCallRequest),
+                ...baseParams()
+            })
+
+            expect(result.statusCode).toBe(200)
+
+            const body = JSON.parse(result.body)
+            expect(body.result.content[0].text).toContain('Japanese Cherry Blossom')
+            const product = body.result.structuredContent.product
+            expect(product.title).toBe('Japanese Cherry Blossom')
+            expect(product.image).toBe(`${TEST_BASE_URL}/images/jcb.jpg`)
+            expect(product.link).toBe(`${TEST_BASE_URL}/products/jcb`)
+            expect(product.images).toContain(`${TEST_BASE_URL}/images/jcb.jpg`)
         })
 
         test('should call show-products tool and return structured content', async () => {
@@ -232,7 +281,7 @@ describe('Product List MCP Server Tests', () => {
             expect(body.result.content[0].text).toContain('Missing dataEndpoint')
         })
 
-        test('should list products UI resource', async () => {
+        test('should list product-list and product-detail UI resources', async () => {
             const resourcesListRequest = {
                 jsonrpc: '2.0',
                 id: 6,
@@ -250,11 +299,17 @@ describe('Product List MCP Server Tests', () => {
 
             const body = JSON.parse(result.body)
             expect(Array.isArray(body.result.resources)).toBe(true)
-            const resource = body.result.resources.find(
+            expect(body.result.resources).toHaveLength(2)
+
+            const listResource = body.result.resources.find(
                 (r) => r.uri === 'ui://show-products/product-list.html'
             )
-            expect(resource).toBeDefined()
-            expect(body.result.resources).toHaveLength(1)
+            expect(listResource).toBeDefined()
+
+            const detailResource = body.result.resources.find(
+                (r) => r.uri === 'ui://show-product-detail/product-detail.html'
+            )
+            expect(detailResource).toBeDefined()
         })
     })
 

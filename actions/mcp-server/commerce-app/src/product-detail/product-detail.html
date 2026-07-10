@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Product Detail</title>
+</head>
+<body>
+  <main class="main pdp">
+    <div id="loader" class="loader" hidden role="status" aria-live="polite" aria-busy="false" aria-label="Loading product">
+      <div class="loader-spinner" aria-hidden="true"></div>
+      <p class="loader-text">Loading product…</p>
+    </div>
+
+    <p id="error-message" class="error-message" hidden></p>
+
+    <article id="pdp-content" class="pdp-content" hidden>
+      <div class="gallery">
+        <div class="gallery-main">
+          <img id="gallery-image" class="gallery-image" src="" alt="" decoding="async">
+        </div>
+        <div id="gallery-dots" class="gallery-dots" aria-label="Product images"></div>
+      </div>
+
+      <div class="pdp-info">
+        <h1 id="pdp-title" class="pdp-title"></h1>
+        <p id="pdp-subtitle" class="pdp-subtitle" hidden></p>
+
+        <div class="pdp-price-row">
+          <span id="pdp-price" class="pdp-price"></span>
+          <span id="pdp-vat" class="pdp-vat" hidden>Inc. VAT</span>
+        </div>
+
+        <span id="pdp-badge" class="pdp-badge" hidden></span>
+
+        <p id="pdp-description" class="pdp-description" hidden></p>
+
+        <div id="pdp-rating" class="pdp-rating" hidden>
+          <span id="pdp-rating-value" class="pdp-rating-value"></span>
+          <span id="pdp-stars" class="pdp-stars" aria-hidden="true"></span>
+          <span id="pdp-reviews" class="pdp-reviews"></span>
+          <a id="pdp-reviews-link" class="pdp-reviews-link" href="#" target="_blank" rel="noopener noreferrer" hidden>View all reviews</a>
+        </div>
+
+        <div class="pdp-actions">
+          <div class="qty" role="group" aria-label="Quantity">
+            <button type="button" id="qty-dec" class="qty-btn" aria-label="Decrease quantity">−</button>
+            <input type="text" id="qty-value" class="qty-value" value="1" inputmode="numeric" aria-label="Quantity" readonly>
+            <button type="button" id="qty-inc" class="qty-btn" aria-label="Increase quantity">+</button>
+          </div>
+          <button type="button" id="add-to-bag" class="add-to-bag">ADD TO BAG</button>
+        </div>
+      </div>
+    </article>
+  </main>
+  <script type="module" src="./product-detail.ts"></script>
+</body>
+</html>

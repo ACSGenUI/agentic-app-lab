@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Shopping Cart</title>
+</head>
+<body>
+  <main class="main cart">
+    <header class="cart-header">
+      <h1 class="cart-title">Your Bag</h1>
+      <p id="cart-summary" class="cart-summary" hidden></p>
+    </header>
+
+    <div id="loader" class="loader" hidden role="status" aria-live="polite" aria-busy="false" aria-label="Loading cart">
+      <div class="loader-spinner" aria-hidden="true"></div>
+      <p class="loader-text">Loading cart…</p>
+    </div>
+
+    <p id="error-message" class="error-message" hidden></p>
+    <p id="empty-message" class="empty-message" hidden>Your bag is empty.</p>
+
+    <ul id="cart-items" class="cart-items" hidden></ul>
+
+    <footer id="cart-footer" class="cart-footer" hidden>
+      <div class="cart-subtotal-row">
+        <span class="cart-subtotal-label">Subtotal</span>
+        <span id="cart-subtotal" class="cart-subtotal"></span>
+      </div>
+      <p class="cart-note">Items added during this conversation appear here.</p>
+    </footer>
+  </main>
+  <script type="module" src="./cart.ts"></script>
+</body>
+</html>

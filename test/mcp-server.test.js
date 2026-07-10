@@ -122,7 +122,7 @@ describe('Product List MCP Server Tests', () => {
             expect(body.result.serverInfo.name).toBe('sselvara-agentic-app')
         })
 
-        test('should list show-products and show-product-detail tools', async () => {
+        test('should list show-products, show-product-detail, and show-cart tools', async () => {
             const toolsListRequest = {
                 jsonrpc: '2.0',
                 id: 2,
@@ -141,9 +141,9 @@ describe('Product List MCP Server Tests', () => {
             const body = JSON.parse(result.body)
             const toolNames = body.result.tools.map((tool) => tool.name)
             expect(toolNames).toEqual(
-                expect.arrayContaining(['show-products', 'show-product-detail'])
+                expect.arrayContaining(['show-products', 'show-product-detail', 'show-cart'])
             )
-            expect(toolNames).toHaveLength(2)
+            expect(toolNames).toHaveLength(3)
             expect(toolNames).not.toContain('echo')
             expect(toolNames).not.toContain('calculator')
             expect(toolNames).not.toContain('weather')
@@ -159,6 +159,10 @@ describe('Product List MCP Server Tests', () => {
             )
             expect(detailTool).toBeDefined()
             expect(detailTool.description).toContain('detailed product view')
+
+            const cartTool = body.result.tools.find((tool) => tool.name === 'show-cart')
+            expect(cartTool).toBeDefined()
+            expect(cartTool.description).toContain('cart')
         })
 
         test('should call show-product-detail tool and return normalized product', async () => {
@@ -281,7 +285,57 @@ describe('Product List MCP Server Tests', () => {
             expect(body.result.content[0].text).toContain('Missing dataEndpoint')
         })
 
-        test('should list product-list and product-detail UI resources', async () => {
+        test('should call show-cart tool and return merged cart items', async () => {
+            const toolCallRequest = {
+                jsonrpc: '2.0',
+                id: 21,
+                method: 'tools/call',
+                params: {
+                    name: 'show-cart',
+                    arguments: {
+                        items: [
+                            {
+                                product: {
+                                    title: 'Japanese Cherry Blossom',
+                                    image: '/images/jcb.jpg',
+                                    path: '/products/jcb',
+                                    price: 300,
+                                    currency: 'QAR'
+                                },
+                                quantity: 1
+                            },
+                            {
+                                product: {
+                                    title: 'Japanese Cherry Blossom',
+                                    image: '/images/jcb.jpg',
+                                    path: '/products/jcb',
+                                    price: 300,
+                                    currency: 'QAR'
+                                },
+                                quantity: 2
+                            }
+                        ]
+                    }
+                }
+            }
+
+            const result = await main({
+                __ow_method: 'post',
+                __ow_body: JSON.stringify(toolCallRequest),
+                ...baseParams()
+            })
+
+            expect(result.statusCode).toBe(200)
+
+            const body = JSON.parse(result.body)
+            expect(body.result.content[0].text).toContain('3 items')
+            expect(body.result.structuredContent.itemCount).toBe(3)
+            expect(body.result.structuredContent.items).toHaveLength(1)
+            expect(body.result.structuredContent.items[0].quantity).toBe(3)
+            expect(body.result.structuredContent.subtotal).toBe(900)
+        })
+
+        test('should list product-list, product-detail, and cart UI resources', async () => {
             const resourcesListRequest = {
                 jsonrpc: '2.0',
                 id: 6,
@@ -299,7 +353,7 @@ describe('Product List MCP Server Tests', () => {
 
             const body = JSON.parse(result.body)
             expect(Array.isArray(body.result.resources)).toBe(true)
-            expect(body.result.resources).toHaveLength(2)
+            expect(body.result.resources).toHaveLength(3)
 
             const listResource = body.result.resources.find(
                 (r) => r.uri === 'ui://show-products/product-list.html'
@@ -310,6 +364,11 @@ describe('Product List MCP Server Tests', () => {
                 (r) => r.uri === 'ui://show-product-detail/product-detail.html'
             )
             expect(detailResource).toBeDefined()
+
+            const cartResource = body.result.resources.find(
+                (r) => r.uri === 'ui://show-cart/cart.html'
+            )
+            expect(cartResource).toBeDefined()
         })
     })
 

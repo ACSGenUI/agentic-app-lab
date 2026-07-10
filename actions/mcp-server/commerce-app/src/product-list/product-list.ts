@@ -35,10 +35,10 @@ const subtitleEl = document.querySelector(".subtitle") as HTMLElement;
 const mainEl = document.querySelector(".main") as HTMLElement;
 
 const APPLICATION_TITLE =
-  (import.meta.env?.VITE_APPLICATION_TITLE as string) || "Content Carousel";
+  (import.meta.env?.VITE_APPLICATION_TITLE as string) || "Product List";
 const APPLICATION_SUBTITLE =
   (import.meta.env?.VITE_SUB_TITLE as string) ||
-  "Manage and browse your documentation assets with ease.";
+  "Explore the latest products and promotions.";
 
 let currentCarouselData: CarouselRow[] = [];
 let currentBaseURL: string | undefined;

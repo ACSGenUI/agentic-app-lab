@@ -3,7 +3,7 @@
  *
  * Data flow:
  * 1. Host invokes `show-product-detail` with a product object → `ontoolresult` renders PDP.
- * 2. User clicks Add to Bag → `app.sendMessage` prompts the host to call `show-cart` (when available).
+ * 2. User clicks Add to Bag → `app.sendMessage` prompts the host to call `show-cart`.
  */
 import {
   App,

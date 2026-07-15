@@ -12,7 +12,8 @@ const outPath = path.join(__dirname, '../actions/mcp-server/embedded-ui.js')
 
 const files = {
     productListHtml: 'product-list.html',
-    productDetailHtml: 'product-detail.html'
+    productDetailHtml: 'product-detail.html',
+    cartHtml: 'cart.html'
 }
 
 const embedded = {}

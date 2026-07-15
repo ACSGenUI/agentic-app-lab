@@ -69,7 +69,7 @@ function createMcpServer (params = {}) {
     registerResources(server, appParams)
 
     if (logger) {
-        logger.info('MCP Server created with show-products, show-product-detail tools and UI resources')
+        logger.info('MCP Server created with show-products, show-product-detail, show-cart tools and UI resources')
     }
 
     return server

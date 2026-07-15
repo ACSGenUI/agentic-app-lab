@@ -16,10 +16,12 @@ governing permissions and limitations under the License.
  * Tools:
  * - show-products: fetches card data and renders the product-list MCP App
  * - show-product-detail: renders a single product detail view MCP App
+ * - show-cart: renders the shopping cart with all items added in the conversation
  *
  * Resources:
  * - ui://show-products/product-list.html
  * - ui://show-product-detail/product-detail.html
+ * - ui://show-cart/cart.html
  */
 
 const fs = require('fs/promises')
@@ -43,6 +45,8 @@ try {
 const RESOURCE_URI = 'ui://show-products/product-list.html'
 /** URI linked from show-product-detail via _meta.ui.resourceUri */
 const PRODUCT_DETAIL_RESOURCE_URI = 'ui://show-product-detail/product-detail.html'
+/** URI linked from show-cart via _meta.ui.resourceUri */
+const CART_RESOURCE_URI = 'ui://show-cart/cart.html'
 
 const argsSchema = z.object({
     keywords: z
@@ -80,6 +84,80 @@ const productSchema = z
             .describe('Number of reviews')
     })
     .passthrough()
+
+const cartItemSchema = z.object({
+    product: productSchema,
+    quantity: z
+        .number()
+        .int()
+        .min(1)
+        .default(1)
+        .describe('Quantity of this product in the cart')
+})
+
+const cartArgsSchema = z.object({
+    items: z
+        .array(cartItemSchema)
+        .min(1)
+        .describe(
+            'All cart line items for this conversation. When adding a product, include every item previously added plus the new line.'
+        )
+})
+
+function cartItemKey (product) {
+    const path = product.path ?? product.link
+    if (path) return String(path)
+    if (product.title) return String(product.title)
+    return JSON.stringify(product)
+}
+
+function parseUnitPrice (product) {
+    const { price } = product
+    if (price == null || price === '') return 0
+    const s = String(price).trim()
+    const numeric = s.replace(/[^0-9.,]/g, '').replace(/,/g, '')
+    const num = Number(numeric)
+    return Number.isNaN(num) ? 0 : num
+}
+
+function formatMoney (amount, currency) {
+    const formatted = amount.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    })
+    return currency ? `${currency} ${formatted}` : formatted
+}
+
+/** Merge duplicate products and normalize URLs for cart display. */
+function buildCartItems (items, baseURL) {
+    const merged = new Map()
+    for (const entry of items) {
+        const product = normalizeProduct(entry.product, baseURL)
+        const quantity = Math.max(1, Math.floor(entry.quantity ?? 1))
+        const key = cartItemKey(product)
+        const existing = merged.get(key)
+        if (existing) {
+            existing.quantity += quantity
+        } else {
+            merged.set(key, { product, quantity })
+        }
+    }
+    return Array.from(merged.values())
+}
+
+function summarizeCart (items) {
+    let subtotal = 0
+    let currency
+    let itemCount = 0
+    for (const { product, quantity } of items) {
+        subtotal += parseUnitPrice(product) * quantity
+        itemCount += quantity
+        if (!currency && product.currency) {
+            currency = String(product.currency)
+        }
+    }
+    return { subtotal, currency, itemCount }
+}
 
 function matchesKeywords (row, keywords) {
     const title = String(row.title ?? '').toLowerCase()
@@ -194,7 +272,8 @@ function resolveConfig (params = {}) {
     const htmlPath = params.__productListHtmlPath || path.join(staticDir, 'product-list.html')
     const detailHtmlPath =
         params.__productDetailHtmlPath || path.join(staticDir, 'product-detail.html')
-    return { baseURL, dataEndpoint, resourceDomains, htmlPath, detailHtmlPath }
+    const cartHtmlPath = params.__cartHtmlPath || path.join(staticDir, 'cart.html')
+    return { baseURL, dataEndpoint, resourceDomains, htmlPath, detailHtmlPath, cartHtmlPath }
 }
 
 async function loadUiHtml (filePath, embeddedKey) {
@@ -341,6 +420,80 @@ function registerTools (server, params = {}) {
             }
         }
     )
+
+    registerAppTool(
+        server,
+        'show-cart',
+        {
+            title: 'Show Cart',
+            description:
+                'Displays the shopping cart with all items added during this conversation. Pass the full items array (product + quantity per line). When a user adds to bag from product detail, merge any prior cart items with the new line so the cart reflects everything added so far.',
+            inputSchema: {
+                items: z
+                    .array(cartItemSchema)
+                    .min(1)
+                    .describe(
+                        'All cart line items for this conversation, including previously added products'
+                    )
+            },
+            outputSchema: {
+                items: z.array(
+                    z.object({
+                        product: z.record(z.any()),
+                        quantity: z.number()
+                    })
+                ),
+                itemCount: z.number(),
+                subtotal: z.number(),
+                subtotalFormatted: z.string().optional(),
+                currency: z.string().optional(),
+                baseURL: z.string().optional()
+            },
+            _meta: { ui: { resourceUri: CART_RESOURCE_URI } }
+        },
+        async (args) => {
+            const parsed = cartArgsSchema.safeParse(args ?? {})
+            if (!parsed.success) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: `Invalid arguments: ${parsed.error.message}`
+                        }
+                    ],
+                    isError: true
+                }
+            }
+
+            const items = buildCartItems(parsed.data.items, baseURL)
+            const { subtotal, currency, itemCount } = summarizeCart(items)
+            const subtotalFormatted =
+                subtotal > 0 ? formatMoney(subtotal, currency) : undefined
+            const summary =
+                itemCount === 1
+                    ? 'Your cart has 1 item.'
+                    : `Your cart has ${itemCount} items.`
+
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: subtotalFormatted
+                            ? `${summary} Subtotal: ${subtotalFormatted}.`
+                            : summary
+                    }
+                ],
+                structuredContent: {
+                    items,
+                    itemCount,
+                    subtotal,
+                    subtotalFormatted,
+                    currency: currency || undefined,
+                    baseURL: baseURL || undefined
+                }
+            }
+        }
+    )
 }
 
 /**
@@ -349,7 +502,8 @@ function registerTools (server, params = {}) {
  * @param {object} params
  */
 function registerResources (server, params = {}) {
-    const { baseURL, resourceDomains, htmlPath, detailHtmlPath } = resolveConfig(params)
+    const { baseURL, resourceDomains, htmlPath, detailHtmlPath, cartHtmlPath } =
+        resolveConfig(params)
     const domains = buildResourceDomains(baseURL, resourceDomains)
     const cspMeta = {
         ui: {
@@ -382,11 +536,13 @@ function registerResources (server, params = {}) {
 
     makeResource(RESOURCE_URI, htmlPath, 'productListHtml')
     makeResource(PRODUCT_DETAIL_RESOURCE_URI, detailHtmlPath, 'productDetailHtml')
+    makeResource(CART_RESOURCE_URI, cartHtmlPath, 'cartHtml')
 }
 
 module.exports = {
     registerTools,
     registerResources,
     RESOURCE_URI,
-    PRODUCT_DETAIL_RESOURCE_URI
+    PRODUCT_DETAIL_RESOURCE_URI,
+    CART_RESOURCE_URI
 }
